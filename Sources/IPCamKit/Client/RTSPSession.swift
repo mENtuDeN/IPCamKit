@@ -91,6 +91,58 @@ public struct SessionDescription: Sendable {
   /// SDP encoding name of the analytics-metadata stream if one was set up
   /// (e.g. `vnd.onvif.metadata`), or `nil` if no metadata stream is active.
   public let metadataEncoding: String?
+
+  /// The `Range` header of the server's PLAY response, if it sent one (for ONVIF
+  /// replay typically `clock=20261103T140000Z-`, the absolute time of the first frame).
+  public var playRange: String? = nil
+}
+
+/// How to ask the server to play (fork addition: ONVIF replay and playback speed).
+///
+/// The default, `.live`, is what IPCamKit always sent: `Range: npt=0.000-`.
+public struct PlayOptions: Sendable {
+  /// Value of the PLAY request's `Range` header.
+  public var range: String
+  /// Optional `Scale` header (playback speed, e.g. 2.0); servers may ignore it.
+  public var scale: Double?
+  /// Headers added to every request except OPTIONS (e.g. `Require: onvif-replay`).
+  public var requestHeaders: [RTSPHeaderField]
+
+  public init(range: String = "npt=0.000-", scale: Double? = nil, requestHeaders: [RTSPHeaderField] = []) {
+    self.range = range
+    self.scale = scale
+    self.requestHeaders = requestHeaders
+  }
+
+  public static let live = PlayOptions()
+
+  /// ONVIF Profile G replay from an absolute time (ONVIF Streaming spec, section 6):
+  /// `Range: clock=YYYYMMDDTHHMMSS.sssZ-` and `Require: onvif-replay` on every request.
+  public static func onvifReplay(from start: Date, scale: Double? = nil) -> PlayOptions {
+    PlayOptions(range: "clock=\(clockTimestamp(start))-", scale: scale,
+                requestHeaders: [RTSPHeaderField(name: "Require", value: "onvif-replay")])
+  }
+
+  /// `20261103T140000.000Z` (UTC).
+  public static func clockTimestamp(_ date: Date) -> String {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "UTC")!
+    let c = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second, .nanosecond], from: date)
+    let ms = (c.nanosecond ?? 0) / 1_000_000
+    return String(format: "%04d%02d%02dT%02d%02d%02d.%03dZ",
+                  c.year ?? 1970, c.month ?? 1, c.day ?? 1, c.hour ?? 0, c.minute ?? 0, c.second ?? 0, ms)
+  }
+}
+
+/// One RTSP header line, for `PlayOptions.requestHeaders`.
+public struct RTSPHeaderField: Sendable, Equatable {
+  public var name: String
+  public var value: String
+
+  public init(name: String, value: String) {
+    self.name = name
+    self.value = value
+  }
 }
 
 /// RTSP client session that manages the full RTSP lifecycle.
@@ -154,13 +206,20 @@ public final class RTSPClientSession: Sendable {
   ///
   /// Returns session info including codec parameters for decoder setup.
   public func start() async throws -> SessionDescription {
+    try await start(play: .live)
+  }
+
+  /// Start the session with custom PLAY options (fork addition), e.g.
+  /// `.onvifReplay(from:)` for ONVIF Profile G recordings.
+  public func start(play: PlayOptions) async throws -> SessionDescription {
     try await state.start(
       url: url,
       credentials: credentials,
       transport: transport,
       userAgent: userAgent,
       onDiagnostic: onDiagnostic,
-      keepaliveInterval: keepaliveInterval
+      keepaliveInterval: keepaliveInterval,
+      play: play
     )
   }
 
@@ -324,6 +383,10 @@ private enum UDPTransportEvent: Sendable {
 
 /// Actor-based internal state for thread-safe session management.
 actor SessionState {
+  /// PLAY options for this session (fork addition); `.live` unless the caller asked otherwise.
+  private var playOptions = PlayOptions.live
+  /// The server's PLAY response `Range` header, if any.
+  private var playResponseRange: String?
   private var connection: RTSPTransportConnection?
   private var presentation: Presentation?
   private var sessionId: String?
@@ -390,8 +453,10 @@ actor SessionState {
     transport: Transport,
     userAgent: String,
     onDiagnostic: (@Sendable (RTSPDiagnostic) -> Void)?,
-    keepaliveInterval: Duration? = nil
+    keepaliveInterval: Duration? = nil,
+    play: PlayOptions = .live
   ) async throws -> SessionDescription {
+    self.playOptions = play
     self.onDiagnostic = onDiagnostic
     self.keepaliveIntervalOverride = keepaliveInterval
     self.transport = transport
@@ -529,10 +594,14 @@ actor SessionState {
     if let sid = sessionId {
       playHeaders.append(("Session", sid))
     }
-    playHeaders.append(("Range", "npt=0.000-"))
+    playHeaders.append(("Range", playOptions.range))
+    if let scale = playOptions.scale {
+      playHeaders.append(("Scale", String(format: "%.1f", scale)))
+    }
 
     let playResp = try await sendRequest(
       method: .play, url: url, extraHeaders: playHeaders)
+    playResponseRange = playResp.header("Range")
 
     try parsePlay(response: playResp, presentation: &presMut)
     presentation = presMut
@@ -786,7 +855,8 @@ actor SessionState {
     return SessionDescription(
       video: video,
       audio: audio,
-      metadataEncoding: applicationEncodingName
+      metadataEncoding: applicationEncodingName,
+      playRange: playResponseRange
     )
   }
 
@@ -1269,8 +1339,13 @@ actor SessionState {
   private func sendRequest(
     method: RTSPMethod,
     url: String,
-    extraHeaders: [(String, String)] = []
+    extraHeaders callerHeaders: [(String, String)] = []
   ) async throws -> RTSPResponse {
+    // Fork addition: session-wide headers (e.g. `Require: onvif-replay`) on every
+    // request except OPTIONS, before the caller's own headers.
+    let sessionHeaders = method == .options
+      ? [] : playOptions.requestHeaders.map { ($0.name, $0.value) }
+    let extraHeaders = sessionHeaders + callerHeaders
     guard let conn = connection else {
       throw RTSPError.connectionFailed("Not connected")
     }

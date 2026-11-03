@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.2-onvif.1 (fork: mENtuDeN/IPCamKit)
+
+### Additions
+
+- `RTSPClientSession.start(play:)` with `PlayOptions`: the PLAY `Range` header
+  (default `npt=0.000-`, unchanged), an optional `Scale` header (playback speed),
+  and headers sent on every request except OPTIONS.
+- `PlayOptions.onvifReplay(from:scale:)` for ONVIF Profile G recordings:
+  `Range: clock=YYYYMMDDTHHMMSS.sssZ-` and `Require: onvif-replay`.
+- `SessionDescription.playRange`: the server's PLAY response `Range` header (for
+  ONVIF replay, the absolute time of the first frame).
+- `start()` is unchanged and still plays live.
+
 ## 0.3.2
 
 ### Fixes
