@@ -5,7 +5,8 @@
 // Apple permits CA92.1 only for reading and writing information that stays
 // inside the app container (UserDefaults.standard / a nil suite). It does not
 // permit App Group or named-suite defaults, defaults shared with other apps
-// or the system, or an unclassified wrapper. This file checks source text and
+// or the system, or an unclassified wrapper. NVRStore is unclassified only
+// when the same file also calls a defaults API. This file checks source text and
 // property lists. It does not archive an app and it does not produce an Xcode
 // privacy report.
 
@@ -345,7 +346,10 @@ private func hasNonStandardAppStorageStore(_ source: String) -> Bool {
 private func classifyUserDefaultsUse(source: String) -> UserDefaultsPrivacyUse {
   let scanned = sourceForAPIScan(source)
   if containsIdentifier(scanned, "NVRStore") {
-    return .unclassifiedWrapper
+    let defaultsAPI = ["UserDefaults", "NSUserDefaults", "AppStorage", "CFPreferences"]
+    if defaultsAPI.contains(where: { containsIdentifier(scanned, $0) }) {
+      return .unclassifiedWrapper
+    }
   }
   if containsIdentifier(scanned, "CFPreferences") {
     return .systemOrForeignDomain
@@ -737,6 +741,16 @@ struct PrivacyManifestAuditTests {
     let standardStore =
       "@AppStorage(\"muted\", store: UserDefaults.standard) var muted = false"
     #expect(classifyUserDefaultsUse(source: standardStore) == .appPrivate)
+  }
+
+  @Test("NVRStore without a defaults API is not CA92.1 use")
+  func nvrStoreNameAloneIsNotDefaultsUse() {
+    let source = """
+      struct NVRStore {
+        var savedHost: String?
+      }
+      """
+    #expect(classifyUserDefaultsUse(source: source) == .none)
   }
 
   @Test("NVRStore is not treated as CA92.1")

@@ -15,7 +15,11 @@ let package = Package(
     .library(
       name: "IPCamKit",
       targets: ["IPCamKit"]
-    )
+    ),
+    .library(
+      name: "NVRCamApp",
+      targets: ["NVRCamApp"]
+    ),
   ],
   targets: [
     .target(
@@ -27,11 +31,20 @@ let package = Package(
       dependencies: ["IPCamKit"],
       path: "Examples/CameraViewer"
     ),
+    .target(
+      name: "NVRCamApp",
+      path: "Sources/NVRCamApp"
+    ),
     .testTarget(
       name: "IPCamKitTests",
       dependencies: ["IPCamKit"],
       path: "Tests/IPCamKitTests",
       resources: [.copy("TestData")]
-    )
+    ),
+    .testTarget(
+      name: "NVRCamAppTests",
+      dependencies: ["NVRCamApp"],
+      path: "Tests/NVRCamAppTests"
+    ),
   ]
 )
