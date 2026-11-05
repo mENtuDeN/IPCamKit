@@ -1,0 +1,14 @@
+{
+  "originHash" : "567fc9fd780aa0a6dba868909802147b50726aef24047088f5d5c21e8cc59e8d",
+  "pins" : [
+    {
+      "identity" : "ipcamkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/mENtuDeN/IPCamKit.git",
+      "state" : {
+        "revision" : "4f5b0ff20e0158c93ec3fbf6745377bb1352a962"
+      }
+    }
+  ],
+  "version" : 3
+}
