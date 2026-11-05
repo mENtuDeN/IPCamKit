@@ -3,6 +3,8 @@
 .claude/
 xcuserdata/
 DerivedData/
-*.xcodeproj
+*.xcodeproj/*
+!Examples/OnvifReplayPin/OnvifReplayPin.xcodeproj/
+!Examples/OnvifReplayPin/OnvifReplayPin.xcodeproj/**
 *.xcworkspace
 .DS_Store

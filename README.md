@@ -34,6 +34,23 @@ Then add it to your target:
 ),
 ```
 
+### ONVIF replay fork
+
+The `onvif-replay` branch is not a dependency pin. It moves. The replay APIs (`PlayOptions`, `RTSPClientSession.start(play:)`) are the commit below, parent of nothing newer on that branch. Deployment targets stay macOS 13.0, iOS 16.0, tvOS 16.0, Mac Catalyst 16.0, and visionOS 1.0.
+
+Prefix `4f5b0ff` resolves to one object:
+
+`4f5b0ff20e0158c93ec3fbf6745377bb1352a962`
+
+```swift
+.package(
+    url: "https://github.com/mENtuDeN/IPCamKit.git",
+    revision: "4f5b0ff20e0158c93ec3fbf6745377bb1352a962"
+)
+```
+
+`Examples/OnvifReplayPin` records that revision in `Package.swift`, `Package.resolved`, and `OnvifReplayPin.xcodeproj/project.pbxproj`. Those files use `revision`, not the branch name.
+
 ## Usage
 
 ```swift
